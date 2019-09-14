@@ -2,6 +2,7 @@
 #include <Adafruit_PWMServoDriver.h>
 #include <timer.h>
 #include <ros.h>
+#include <std_msgs/Int32.h>
 #include "ros_lib/pwm_radio_arduino/pwm_steering.h"
 
 #define MIN_PULSE_WIDTH       650
@@ -27,15 +28,27 @@ const int pin_pwm_out_enabled = 9;
 const int channel_pwm_out_steering = 1;
 const int channel_pwm_out_throttle = 0;
 
-char buf[50] = "";
-
 volatile int val_steering_by_serial = DEFAULT_PULSE_WIDTH;
 volatile int val_throttle_by_serial = DEFAULT_PULSE_WIDTH;
 
 ros::NodeHandle nh;
 
-pwm_radio_arduino::pwm_steering ros_pwm_message;
-ros::Publisher chatter("pwm_radio_arduino", &ros_pwm_message);
+pwm_radio_arduino::pwm_steering radio_pwm_message;
+
+void handle_driver_pwm(const pwm_radio_arduino::pwm_steering& driver_pwm_message) {
+  val_steering_by_serial = driver_pwm_message.steering;
+  val_throttle_by_serial = driver_pwm_message.throttle;
+}
+
+void handle_mode_change(const std_msgs::Int32& msg) {
+  mode = static_cast<drive_mode>(msg.data);
+}
+
+
+ros::Subscriber<std_msgs::Int32> subscriber_mode("pwm_radio_arduino/mode", &handle_mode_change);
+ros::Subscriber<pwm_radio_arduino::pwm_steering> subscriber_driver_pwm("pwm_radio_arduino/driver_pwm", &handle_driver_pwm);
+ros::Publisher publisher_radio("pwm_radio_arduino/radio_pwm", &radio_pwm_message);
+
 
 class PwmController
 {
@@ -45,13 +58,7 @@ class PwmController
   unsigned int old_values[max_num_channels] = {0};
   unsigned int frequency_;
   Adafruit_PWMServoDriver pwm;
-
-  int pulseWidth(int pulse_width)
-  {
-    return (int)(float(pulse_width) / 1000000 * frequency_ * 4096);
-  }
-
-
+  
 public:
   PwmController(unsigned int frequency, unsigned int tolerance): 
     frequency_(frequency), tolerance_(tolerance)  
@@ -86,6 +93,12 @@ public:
   void reset() {
     init_ = false;
   }    
+ 
+private:
+  int pulseWidth(int pulse_width)
+  {
+    return (int)(float(pulse_width) / 1000000 * frequency_ * 4096);
+  }
 };
 
 
@@ -93,16 +106,18 @@ class PwmListener
 {
   volatile unsigned int pwm_value_;
   volatile unsigned long prev_time_;
-  const int pin_;
+public:
+  const int pin;
+  const int pin_as_pc_int;
 
 public:
-  PwmListener(int pin, int default_value): 
-    pin_(pin), pwm_value_(default_value), prev_time_(0)
+  PwmListener(int pin_, int default_value): 
+    pin(pin_), pwm_value_(default_value), prev_time_(0), pin_as_pc_int(digitalPinToPCINT(pin_))
   {}
 
   void process()
   {
-    uint8_t trigger = getPinChangeInterruptTrigger(digitalPinToPCINT(pin_));
+    uint8_t trigger = getPinChangeInterruptTrigger(pin_as_pc_int);
     if(trigger == RISING)
       prev_time_ = micros();
     else if(trigger == FALLING)
@@ -111,16 +126,7 @@ public:
       // Wrong usage
     }
   }
-
-  // wrapper function is required as an argument  
-  // because attachPinChangeInterrupt doesn't accept 
-  // pointers to object's methods
-  void setup(void(*func)()) 
-  {
-    pinMode(pin_, INPUT);
-    attachPinChangeInterrupt(digitalPinToPCINT(pin_), func, CHANGE);
-  }
-
+  
   unsigned int value() const 
   {
     return pwm_value_;
@@ -129,22 +135,13 @@ public:
   unsigned long prev_time_micros() const {
     return prev_time_;
   }
-  
 };
 
 
 PwmListener pwm_listener_steering (pin_pwm_in_steering, DEFAULT_PULSE_WIDTH);
-
-void interrupt1() 
-{
-  pwm_listener_steering.process();
-}
-
 PwmListener pwm_listener_throttle (pin_pwm_in_throttle, DEFAULT_PULSE_WIDTH);
-void interrupt2() 
-{
-  pwm_listener_throttle.process();
-}
+void interrupt_steering() { pwm_listener_steering.process(); }
+void interrupt_throttle() { pwm_listener_throttle.process(); }
 
 PwmController pwm_controller(FREQUENCY, 10);
 Timer<2> timer;
@@ -153,6 +150,8 @@ bool check_pwm_out_enabled() {
   auto val = digitalRead(pin_pwm_out_enabled);
   return val == HIGH;
 }
+
+
 
 bool drive_according_to_input(void *) 
 {
@@ -173,18 +172,10 @@ bool drive_according_to_input(void *)
     throttle = DEFAULT_PULSE_WIDTH;
     return true;
   }
-  
 
   if (check_pwm_out_enabled()) {
-    bool changed = false;
-    changed |= pwm_controller.set(channel_pwm_out_throttle, throttle);
-    changed |= pwm_controller.set(channel_pwm_out_steering, steering);
-  
-    if (changed)
-    {
-      sprintf(buf, "set: %d %d\n", steering, throttle);
-//      Serial.print(buf);
-    }
+    pwm_controller.set(channel_pwm_out_throttle, throttle);
+    pwm_controller.set(channel_pwm_out_steering, steering);
   }
   else {
     pwm_controller.reset();
@@ -192,67 +183,33 @@ bool drive_according_to_input(void *)
   return true;
 }
 
-bool process_input(void *) {
-//  sCmd.readSerial(); 
-  return true;  
-}
-//
-//void command() {
-//  const char *arg = sCmd.next();
-//  
-//  if (arg != NULL) {
-//     mode = static_cast<drive_mode>(atoi(arg));
-//  }
-//
-//  if (mode == drive_by_serial) {
-//    const char *arg_steering = sCmd.next();
-//    const char *arg_throttle = sCmd.next();
-//    if (arg_steering != NULL and arg_throttle != NULL) {
-//      val_steering_by_serial = atoi(arg_steering);
-//      val_throttle_by_serial = atoi(arg_throttle);
-//    }
-//    else {
-//      //Serial.print("ret: error=missing_argument");
-//      return;
-//    }
-//  }
-//  
-//  //Serial.print("ret: mode=");
-//  //Serial.println(mode);
-//}
-
-void read_radio() {
-  static char b[30];
-  sprintf(b, "ret: s=%d t=%d\n", pwm_listener_steering.value(), pwm_listener_throttle.value());
-  //Serial.print(b);  
-}
-
 void setup() {
-  //Serial.begin(115200);
-  //Serial.println("info: starting input pwm monitoring...");
-  pwm_listener_steering.setup(&interrupt1);
-  pwm_listener_throttle.setup(&interrupt2);
+  // starting input pwm monitoring...
+  pinMode(pwm_listener_steering.pin, INPUT);
+  attachPinChangeInterrupt(pwm_listener_steering.pin_as_pc_int, &interrupt_steering, CHANGE);
+  pinMode(pwm_listener_throttle.pin, INPUT);
+  attachPinChangeInterrupt(pwm_listener_throttle.pin_as_pc_int, &interrupt_throttle, CHANGE);
 
-  //Serial.println("info: preparing timers");
+  // preparing timers
   timer.every(10, drive_according_to_input);
-  timer.every(11, process_input);
 
+  // init ros
   nh.initNode();
-  nh.advertise(chatter);
-
-  //Serial.println("info: preparing command processing");
-  
-  //Serial.println("info: setup complete");
+  nh.advertise(publisher_radio);
+  nh.subscribe(subscriber_mode);
+  nh.subscribe(subscriber_driver_pwm);
 }
 
+void publish_state_to_ros() {
+  radio_pwm_message.throttle = pwm_listener_throttle.value();
+  radio_pwm_message.steering = pwm_listener_steering.value();
+  publisher_radio.publish(&radio_pwm_message);
+}
 
 
 void loop() { 
-//   timer.tick();
-  ros_pwm_message.throttle = pwm_listener_throttle.value();
-  ros_pwm_message.steering = pwm_listener_steering.value();
-  chatter.publish(&ros_pwm_message);
+  timer.tick();
+  publish_state_to_ros();
   nh.spinOnce();
-//  delay(100);
-  
+  //delay(100);
 }
