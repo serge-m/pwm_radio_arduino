@@ -5,10 +5,17 @@
 #include <std_msgs/Int32.h>
 #include "ros_lib/pwm_radio_arduino/pwm_steering.h"
 
-#define MIN_PULSE_WIDTH       650
-#define MAX_PULSE_WIDTH       2350
-#define DEFAULT_PULSE_WIDTH   1380
+
+#define DEFAULT_PULSE_WIDTH   1400
 #define FREQUENCY             60
+#define DEFAULT_THROTTLE_FROM_RADIO 1500
+#define MIN_IN_THROTTLE_PULSE_WIDTH 1000
+#define MAX_IN_THROTTLE_PULSE_WIDTH 2000
+
+#define MIN_OUT_THROTTLE_PULSE_WIDTH (DEFAULT_PULSE_WIDTH-230)
+#define MAX_OUT_THROTTLE_PULSE_WIDTH (DEFAULT_PULSE_WIDTH+110)
+
+#define CLAMP(x, upper, lower) (min(upper, max(x, lower)))
 
 enum drive_mode {
   drive_off = 0,
@@ -151,17 +158,27 @@ bool check_pwm_out_enabled() {
   return val == HIGH;
 }
 
+unsigned interp(unsigned value, unsigned in_min, unsigned in_max, unsigned out_min, unsigned out_max) {
+  return out_min + (out_max - out_min) * (value - in_min) / (in_max - in_min);
+}
 
+unsigned limit_throttle_pwm(unsigned throttle) {
+  if (throttle >= DEFAULT_THROTTLE_FROM_RADIO) {
+    return interp(throttle, DEFAULT_THROTTLE_FROM_RADIO, MAX_IN_THROTTLE_PULSE_WIDTH, DEFAULT_PULSE_WIDTH, MAX_OUT_THROTTLE_PULSE_WIDTH);
+  }
+  else {
+    return interp(throttle, MIN_IN_THROTTLE_PULSE_WIDTH, DEFAULT_THROTTLE_FROM_RADIO, MIN_OUT_THROTTLE_PULSE_WIDTH, DEFAULT_PULSE_WIDTH);
+  }
+}
 
 bool drive_according_to_input(void *) 
 {
-  int steering = 0;
-  int throttle = 0;
+  unsigned int steering = 0;
+  unsigned int throttle = 0;
 
   if (mode == drive_by_radio) {   
     steering =   pwm_listener_steering.value();
-    throttle =   pwm_listener_throttle.value();
-    throttle = throttle - 1500 + DEFAULT_PULSE_WIDTH;
+    throttle =   limit_throttle_pwm(pwm_listener_throttle.value());
   }
   else if (mode == drive_by_serial) {
     steering = val_steering_by_serial;
