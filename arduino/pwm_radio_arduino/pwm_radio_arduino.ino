@@ -11,6 +11,7 @@
 #define DEFAULT_THROTTLE_FROM_RADIO 1500
 #define MIN_IN_THROTTLE_PULSE_WIDTH 1000
 #define MAX_IN_THROTTLE_PULSE_WIDTH 2000
+#define MICROS_RADIO_INACTIVITY_THRESHOLD 500000
 
 #define MIN_OUT_THROTTLE_PULSE_WIDTH (DEFAULT_PULSE_WIDTH-230)
 #define MAX_OUT_THROTTLE_PULSE_WIDTH (DEFAULT_PULSE_WIDTH+110)
@@ -20,7 +21,7 @@
 enum drive_mode {
   drive_off = 0,
   drive_by_radio = 1,
-  drive_by_serial= 2
+  drive_by_serial = 2
 };
 
 volatile drive_mode mode = drive_by_radio;
@@ -28,7 +29,7 @@ volatile drive_mode mode = drive_by_radio;
 const int pin_pwm_in_steering = 11;
 const int pin_pwm_in_throttle = 10;
 
-// pin 9 is connected to the power V+ of pca9685 
+// pin 9 is connected to the power V+ of pca9685
 // to capture when the controller is enabled to reinitialize it.
 const int pin_pwm_out_enabled = 9;
 
@@ -37,7 +38,7 @@ const int channel_pwm_out_throttle = 0;
 
 volatile int val_steering_by_serial = DEFAULT_PULSE_WIDTH;
 volatile int val_throttle_by_serial = DEFAULT_PULSE_WIDTH;
-
+volatile unsigned long last_update_micros_by_serial = 0;
 ros::NodeHandle nh;
 
 pwm_radio_arduino::pwm_steering radio_pwm_message;
@@ -45,6 +46,7 @@ pwm_radio_arduino::pwm_steering radio_pwm_message;
 void handle_driver_pwm(const pwm_radio_arduino::pwm_steering& driver_pwm_message) {
   val_steering_by_serial = driver_pwm_message.steering;
   val_throttle_by_serial = driver_pwm_message.throttle;
+  last_update_micros_by_serial = micros();
 }
 
 void handle_mode_change(const std_msgs::Int32& msg) {
@@ -65,10 +67,10 @@ class PwmController
   unsigned int old_values[max_num_channels] = {0};
   unsigned int frequency_;
   Adafruit_PWMServoDriver pwm;
-  
+
 public:
-  PwmController(unsigned int frequency, unsigned int tolerance): 
-    frequency_(frequency), tolerance_(tolerance)  
+  PwmController(unsigned int frequency, unsigned int tolerance):
+    frequency_(frequency), tolerance_(tolerance)
   {
     // called this way, it uses the default address 0x40
     Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
@@ -79,7 +81,7 @@ public:
       initialize();
     }
     if (abs(int(value) - int(old_values[channel])) > tolerance_) {
-      pwm.setPWM(channel, 0, pulseWidth(value));  
+      pwm.setPWM(channel, 0, pulseWidth(value));
       old_values[channel] = value;
       return true;
     }
@@ -87,20 +89,20 @@ public:
   }
 
   void initialize() {
-//    Serial.println("info: waiting for output pwm controller..."); 
+//    Serial.println("info: waiting for output pwm controller...");
     for (auto i = 0; i < max_num_channels; ++i) {
       old_values[i] = 0;
     }
     pwm.begin();
     pwm.setPWMFreq(frequency_);
     init_ = true;
-//    Serial.println("info: output pwm controller initialized"); 
+//    Serial.println("info: output pwm controller initialized");
   }
 
   void reset() {
     init_ = false;
-  }    
- 
+  }
+
 private:
   int pulseWidth(int pulse_width)
   {
@@ -109,7 +111,7 @@ private:
 };
 
 
-class PwmListener 
+class PwmListener
 {
   volatile unsigned int pwm_value_;
   volatile unsigned long prev_time_;
@@ -118,24 +120,26 @@ public:
   const int pin_as_pc_int;
 
 public:
-  PwmListener(int pin_, int default_value): 
+  PwmListener(int pin_, int default_value):
     pin(pin_), pwm_value_(default_value), prev_time_(0), pin_as_pc_int(digitalPinToPCINT(pin_))
   {}
 
-  void process()
-  {
+  void process() {
     uint8_t trigger = getPinChangeInterruptTrigger(pin_as_pc_int);
     if(trigger == RISING)
       prev_time_ = micros();
     else if(trigger == FALLING)
-      pwm_value_ = micros() - prev_time_;
+      pwm_value_ = micros_since_last_signal();
     else {
       // Wrong usage
     }
   }
-  
-  unsigned int value() const 
-  {
+
+  unsigned long micros_since_last_signal() const {
+    return micros() - prev_time_; 
+  }
+
+  unsigned int value() const {
     return pwm_value_;
   }
 
@@ -171,24 +175,25 @@ unsigned limit_throttle_pwm(unsigned throttle) {
   }
 }
 
-bool drive_according_to_input(void *) 
+bool drive_according_to_input(void *)
 {
-  unsigned int steering = 0;
-  unsigned int throttle = 0;
+  unsigned int steering = DEFAULT_PULSE_WIDTH;
+  unsigned int throttle = DEFAULT_PULSE_WIDTH;
 
-  if (mode == drive_by_radio) {   
-    steering =   pwm_listener_steering.value();
-    throttle =   limit_throttle_pwm(pwm_listener_throttle.value());
+  
+  if (mode == drive_by_radio) { 
+    if (pwm_listener_steering.micros_since_last_signal() < MICROS_RADIO_INACTIVITY_THRESHOLD) {
+      steering =   pwm_listener_steering.value();
+      throttle =   limit_throttle_pwm(pwm_listener_throttle.value());
+    }
   }
   else if (mode == drive_by_serial) {
-    steering = val_steering_by_serial;
-    throttle = val_throttle_by_serial;
-  } 
-  else if (mode == drive_off) {
-    steering = DEFAULT_PULSE_WIDTH;
-    throttle = DEFAULT_PULSE_WIDTH;
-    return true;
+    if (micros() - last_update_micros_by_serial < MICROS_RADIO_INACTIVITY_THRESHOLD) {
+      steering = val_steering_by_serial;
+      throttle = val_throttle_by_serial;
+    }
   }
+
 
   if (check_pwm_out_enabled()) {
     pwm_controller.set(channel_pwm_out_throttle, throttle);
