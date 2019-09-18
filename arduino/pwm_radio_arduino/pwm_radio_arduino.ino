@@ -21,7 +21,8 @@
 enum drive_mode {
   drive_off = 0,
   drive_by_radio = 1,
-  drive_by_serial = 2
+  drive_by_serial = 2,
+  drive_by_serial_with_radio_limit = 3
 };
 
 volatile drive_mode mode = drive_by_radio;
@@ -89,14 +90,12 @@ public:
   }
 
   void initialize() {
-//    Serial.println("info: waiting for output pwm controller...");
     for (auto i = 0; i < max_num_channels; ++i) {
       old_values[i] = 0;
     }
     pwm.begin();
     pwm.setPWMFreq(frequency_);
     init_ = true;
-//    Serial.println("info: output pwm controller initialized");
   }
 
   void reset() {
@@ -189,6 +188,15 @@ bool drive_according_to_input(void *)
   }
   else if (mode == drive_by_serial) {
     if (micros() - last_update_micros_by_serial < MICROS_RADIO_INACTIVITY_THRESHOLD) {
+      steering = val_steering_by_serial;
+      throttle = val_throttle_by_serial;
+    }
+  }
+  else if (mode == drive_by_serial_with_radio_limit) {
+    if (
+      micros() - last_update_micros_by_serial < MICROS_RADIO_INACTIVITY_THRESHOLD && 
+      pwm_listener_steering.micros_since_last_signal() < MICROS_RADIO_INACTIVITY_THRESHOLD
+      ) {
       steering = val_steering_by_serial;
       throttle = val_throttle_by_serial;
     }
