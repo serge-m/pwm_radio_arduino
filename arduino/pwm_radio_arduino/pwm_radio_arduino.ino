@@ -213,6 +213,18 @@ bool drive_according_to_input(void *)
   return true;
 }
 
+void publish_state_to_ros() {
+  radio_pwm_message.throttle = pwm_listener_throttle.value();
+  radio_pwm_message.steering = pwm_listener_steering.value();
+  publisher_radio.publish(&radio_pwm_message);
+}
+
+bool handle_ros(void *) {
+  publish_state_to_ros();
+  nh.spinOnce();
+  return true;
+}
+
 void setup() {
   // starting input pwm monitoring...
   pinMode(pwm_listener_steering.pin, INPUT);
@@ -222,6 +234,7 @@ void setup() {
 
   // preparing timers
   timer.every(10, drive_according_to_input);
+  timer.every(10, handle_ros);
 
   // init ros
   nh.initNode();
@@ -230,16 +243,8 @@ void setup() {
   nh.subscribe(subscriber_driver_pwm);
 }
 
-void publish_state_to_ros() {
-  radio_pwm_message.throttle = pwm_listener_throttle.value();
-  radio_pwm_message.steering = pwm_listener_steering.value();
-  publisher_radio.publish(&radio_pwm_message);
-}
 
 
 void loop() { 
   timer.tick();
-  publish_state_to_ros();
-  nh.spinOnce();
-  //delay(100);
 }
