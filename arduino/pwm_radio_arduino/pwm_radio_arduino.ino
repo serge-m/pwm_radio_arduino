@@ -162,7 +162,8 @@ bool check_pwm_out_enabled() {
 }
 
 unsigned interp(unsigned value, unsigned in_min, unsigned in_max, unsigned out_min, unsigned out_max) {
-  return out_min + (out_max - out_min) * (value - in_min) / (in_max - in_min);
+  auto interpolated = out_min + (out_max - out_min) * (value - in_min) / (in_max - in_min);
+  return constrain(interpolated, out_min, out_max);
 }
 
 unsigned limit_throttle_pwm(unsigned throttle) {
