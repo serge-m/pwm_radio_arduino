@@ -18,13 +18,10 @@ The car consists  of the following parts:
 * ESC
 
 
-## How to
-* change mode:
+## Development
 
-Radio:
+### How to add/update message headers for arduino sketch
 
-    rostopic pub /pwm_radio_arduino/mode std_msgs/Int32 --once "data: 1"
+Activate catkin environment. 
 
-AI:
-
-    rostopic pub /pwm_radio_arduino/mode std_msgs/Int32 --once "data: 2"
+    rosrun rosserial_client make_libraries arduino/pwm_radio_arduino
