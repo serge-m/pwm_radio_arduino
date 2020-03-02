@@ -21,3 +21,10 @@ int transform(float input, const Range3Levels<float>& range_in, const Range3Leve
    }
    return interp(input, range_in.low, range_in.zero, range_out.low, range_out.zero);
 }
+
+int transform2(float input, float in_low, float in_zero, float in_high, float out_low, float out_zero, float out_high) {
+   if (input >= in_zero) {
+    return interp(input, in_zero, in_high, out_zero, out_high);
+   }
+   return interp(input, in_low, in_zero, out_low, out_zero);
+}

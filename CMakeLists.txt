@@ -48,8 +48,10 @@ find_package(catkin REQUIRED
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 add_message_files(
+  DIRECTORY msg
   FILES
   pwm_steering.msg
+  steering_tfm.msg
 )
 
 generate_messages(

@@ -25,3 +25,12 @@ The car consists  of the following parts:
 Activate catkin environment. 
 
     rosrun rosserial_client make_libraries arduino/pwm_radio_arduino
+
+
+### Arduino libraries
+
+The node requies some additional libraries installed in Arduino IDE:
+
+* Rosserial Arduino library 0.7.8 (0.7.9 doesn't work for my nano)
+* Adafruit PWM servo driver library (tested with 1.0.4) for PCA9685 board.
+ 

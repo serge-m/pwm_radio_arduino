@@ -2,8 +2,9 @@
 #include <timer.h>
 #include <ros.h>
 #include "ros_lib/ackermann_msgs/AckermannDrive.h"
-#include "range_transforms.hpp"
+#include "ros_lib/pwm_radio_arduino/steering_tfm.h"
 #include "pca9685_driver.hpp"
+#include "range_transforms.hpp"
 
 #define PCA9685_FREQUENCY             60
 
@@ -25,16 +26,13 @@ const int pin_pwm_out_enabled = 9;
 const int channel_pwm_out_steering = 1;
 const int channel_pwm_out_throttle = 0;
 
-constexpr int DEFAULT_PULSE_WIDTH = 1400;
 volatile unsigned long last_update_micros_by_serial = 0;
 ros::NodeHandle nh;
 
 
-
-Range3Levels<float> angle_input(-1, 0, 1);
-Range3Levels<float> angle_pwm(1000, 1400, 1800);
-Range3Levels<float> speed_input(-1, 0, 1);
-Range3Levels<float> speed_pwm(1000, 1400, 1800);
+pwm_radio_arduino::steering_tfm tfm_ranges;
+ackermann_msgs::AckermannDrive ackermanm_ros_in;
+ackermann_msgs::AckermannDrive ackermann_ros_out;
 volatile float pwm_steering_by_serial = 0;
 volatile float pwm_throttle_by_serial = 0;
 
@@ -43,18 +41,36 @@ PwmController pwm_controller(PCA9685_FREQUENCY, 10);
 
 Timer<3> timer;
 
-void handle_driver_pwm(const ackermann_msgs::AckermannDrive& msg) {
+void update() {
   if (all_params_are_there) { 
-    pwm_steering_by_serial = msg.steering_angle; //transform(msg.steering_angle, angle_input, angle_pwm);
-    pwm_throttle_by_serial = msg.speed; //transform(msg.speed, speed_input, speed_pwm);
+    ackermann_ros_out.steering_angle = transform2(
+      ackermanm_ros_in.steering_angle, 
+      tfm_ranges.angle_in_low, tfm_ranges.angle_in_zero, tfm_ranges.angle_in_high,
+      tfm_ranges.angle_out_low, tfm_ranges.angle_out_zero, tfm_ranges.angle_out_high
+      );
+    ackermann_ros_out.speed = transform2(
+      ackermanm_ros_in.speed, 
+      tfm_ranges.speed_in_low, tfm_ranges.speed_in_zero, tfm_ranges.speed_in_high,
+      tfm_ranges.speed_out_low, tfm_ranges.speed_out_zero, tfm_ranges.speed_out_high
+      );
   }
 }
 
-ackermann_msgs::AckermannDrive radio_pwm_message;
-ros::Subscriber<ackermann_msgs::AckermannDrive> subscriber_driver_pwm("pwm_radio_arduino/driver_pwm", &handle_driver_pwm);
-ros::Publisher publisher_radio("pwm_radio_arduino/radio_ackermann", &radio_pwm_message);
+void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
+  ackermanm_ros_in = msg;
+  update();
+}
 
 
+void ros_callback_transform_range(const pwm_radio_arduino::steering_tfm& msg) {
+  tfm_ranges = msg;
+  update();
+}
+
+
+ros::Subscriber<ackermann_msgs::AckermannDrive> sub_driver_input("pwm_radio_arduino/driver_pwm", &ros_callback_driver_input);
+ros::Subscriber<pwm_radio_arduino::steering_tfm> sub_tfm_range("pwm_radio_arduino/steering_tfm", &ros_callback_transform_range);
+ros::Publisher publisher_radio("pwm_radio_arduino/radio_ackermann", &ackermann_ros_out);
 
 bool check_pwm_out_enabled() {
   return digitalRead(pin_pwm_out_enabled) == HIGH;
@@ -62,64 +78,24 @@ bool check_pwm_out_enabled() {
 
 bool drive_according_to_input(void *)
 {
-  unsigned int steering = 0;
-  unsigned int throttle = 0;
-
-//  if (mode == drive_by_radio) {
-//    digitalWrite(LED_BUILTIN, HIGH);
-//  }
-//  else {
-//    digitalWrite(LED_BUILTIN, LOW);
-//  }
-  // TODO: set according to the mode
-  steering = pwm_steering_by_serial;
-  throttle = pwm_throttle_by_serial;
-  
   if (check_pwm_out_enabled()) {
-    pwm_controller.set(channel_pwm_out_throttle, throttle);
-    pwm_controller.set(channel_pwm_out_steering, steering);
+    pwm_controller.set(channel_pwm_out_throttle, ackermann_ros_out.speed);
+    pwm_controller.set(channel_pwm_out_steering, ackermann_ros_out.steering_angle);
   }
   else {
     pwm_controller.reset();
   }
-
   
   return true;
 }
 
-void publish_state_to_ros() {
-  radio_pwm_message.steering_angle = pwm_steering_by_serial; // TODO: replace with real values
-  radio_pwm_message.speed = pwm_throttle_by_serial;          // TODO: replace with real values
-  publisher_radio.publish(&radio_pwm_message);
-}
-
 
 bool ros_publish_and_spin(void *) {
-  publish_state_to_ros();
+  publisher_radio.publish(&ackermann_ros_out);
   nh.spinOnce();
   return true;
 }
 
-bool reload_parameters(void *) {
-  int zz;
-  if (!nh.getParam("/pwm_radio_arduino/mode", &zz, 1, 0)) { 
-//     digitalWrite(LED_BUILTIN, HIGH);
-zz = 17;  
-    
-  }
-  else {
-//    digitalWrite(LED_BUILTIN, LOW);
-    
-  }
-  if (zz > 0) { 
-     digitalWrite(LED_BUILTIN, HIGH);
-  }
-  else {
-    digitalWrite(LED_BUILTIN, LOW);
-  }
-  pwm_steering_by_serial = zz;
-  return true; 
-}
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -127,12 +103,12 @@ void setup() {
   // preparing timers
   timer.every(20, drive_according_to_input);
   timer.every(20, ros_publish_and_spin);
-  timer.every(501, reload_parameters);
 
   // init ros
   nh.initNode();
   nh.advertise(publisher_radio);
-  nh.subscribe(subscriber_driver_pwm);
+  nh.subscribe(sub_driver_input);
+  nh.subscribe(sub_tfm_range);
 }
 
 
