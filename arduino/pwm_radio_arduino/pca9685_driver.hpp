@@ -1,5 +1,8 @@
 #include <Adafruit_PWMServoDriver.h>
 
+// pin 9 is connected to the power V+ of pca9685
+// to capture when the controller is enabled to reinitialize it.
+constexpr int pin_pwm_out_enabled = 9;
 
 class PwmController
 {
@@ -8,7 +11,7 @@ class PwmController
   Adafruit_PWMServoDriver pwm;
 
 public:
-  PwmController(unsigned int frequency, unsigned int tolerance):
+  PwmController(unsigned int frequency):
     frequency_(frequency)
   {
     // called this way, it uses the default address 0x40
@@ -38,3 +41,7 @@ private:
     return (int)(float(pulse_width) / 1000000 * frequency_ * 4096);
   }
 };
+
+bool check_pwm_out_enabled() {
+  return digitalRead(pin_pwm_out_enabled) == HIGH;
+}
