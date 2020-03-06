@@ -33,26 +33,29 @@ int pulseWidth(int pulse_width)
 }
 
 
-void pwm_spin() {
+int pwm_spin(const int pwm_angle, const int pwm_speed) {
   if(!check_pwm_out_enabled()) {
     esc_init = false;
-    return;
+    return 1;
   }
     
   if (!esc_init) {
     if(pwm_speed_zero==0 && pwm_angle_zero==0) {  // zero values not initialized, do nothing
-      return;
+      return 2;
     }
     pwm.begin();
     pwm.setPWMFreq(PCA9685_FREQUENCY);
-    pwm.setPWM(channel_angle, 0, pulseWidth(pwm_angle_zero));
-    pwm.setPWM(channel_speed, 0, pulseWidth(pwm_speed_zero));
-    delay(500);
+//    pwm.setPWM(channel_angle, 0, 0);
+//    pwm.setPWM(channel_speed, 0, 0);
+    delay(1000);  // TODO: check if we need this 
     esc_init = true;
-    return;
+    return 3;
   }
 
-  
+  pwm.setPWM(channel_angle, 0, pulseWidth(pwm_angle));
+  pwm.setPWM(channel_speed, 0, pulseWidth(pwm_speed));
+
+  return 0;
 }
 
     
