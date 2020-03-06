@@ -6,7 +6,7 @@
 #include "pca9685_driver.hpp"
 #include "range_transforms.hpp"
 
-#define PCA9685_FREQUENCY             60
+
 
 constexpr int channel_pwm_out_steering = 1;
 constexpr int channel_pwm_out_throttle = 0;
@@ -19,41 +19,58 @@ ros::NodeHandle nh;
 
 bool tfm_init = false;
 pwm_radio_arduino::steering_tfm tfm_ranges;
-ackermann_msgs::AckermannDrive ackermanm_ros_in;
+ackermann_msgs::AckermannDrive ackermann_ros_in;
 ackermann_msgs::AckermannDrive ackermann_ros_out;
 
 
-PwmController pwm_controller(PCA9685_FREQUENCY);
-
 Timer<2> timer;
 
-void update() {
-  if (tfm_init) { 
-    ackermann_ros_out.steering_angle = transform2(
-      ackermanm_ros_in.steering_angle, 
-      tfm_ranges.angle_in_low, tfm_ranges.angle_in_zero, tfm_ranges.angle_in_high,
-      tfm_ranges.angle_out_low, tfm_ranges.angle_out_zero, tfm_ranges.angle_out_high
+void update(
+  const float& angle_in, 
+  const float& speed_in, 
+  const pwm_radio_arduino::steering_tfm& tfm,
+  float& angle_out, 
+  float& speed_out
+  ) {
+    angle_out = transform2(
+      angle_in, 
+      tfm.angle_in_low, tfm.angle_in_zero, tfm.angle_in_high,
+      tfm.angle_out_low, tfm.angle_out_zero, tfm.angle_out_high
       );
-    ackermann_ros_out.speed = transform2(
-      ackermanm_ros_in.speed, 
-      tfm_ranges.speed_in_low, tfm_ranges.speed_in_zero, tfm_ranges.speed_in_high,
-      tfm_ranges.speed_out_low, tfm_ranges.speed_out_zero, tfm_ranges.speed_out_high
+    speed_out = transform2(
+      speed_in, 
+      tfm.speed_in_low, tfm.speed_in_zero, tfm.speed_in_high,
+      tfm.speed_out_low, tfm.speed_out_zero, tfm.speed_out_high
       );
-  }
 }
 
 void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
-  ackermanm_ros_in = msg;
+  ackermann_ros_in = msg;
   last_update_micros = micros();
-  ackermann_ros_out.jerk = last_update_micros / 1000000.;
-  update();
+  if (tfm_init) {
+    update(
+      ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
+      tfm_ranges, 
+      ackermann_ros_out.steering_angle, ackermann_ros_out.speed
+    );
+  }
 }
 
 
 void ros_callback_transform_range(const pwm_radio_arduino::steering_tfm& msg) {
   tfm_ranges = msg;
   tfm_init = true;
-  update();
+  
+  update(
+    ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
+    tfm_ranges, 
+    ackermann_ros_out.steering_angle, ackermann_ros_out.speed
+  );
+  update(
+    tfm_ranges.angle_out_zero, tfm_ranges.speed_out_zero, 
+    tfm_ranges, 
+    pwm_angle_zero, pwm_speed_zero
+  );
 }
 
 
@@ -75,9 +92,6 @@ bool drive_according_to_input(void *)
   if (check_pwm_out_enabled()) {
     pwm_controller.set(channel_pwm_out_throttle, ackermann_ros_out.speed);
     pwm_controller.set(channel_pwm_out_steering, ackermann_ros_out.steering_angle);
-  }
-  else {
-    pwm_controller.reset();
   }
   
   return true;
