@@ -16,14 +16,15 @@ bool tfm_init = false;
 pwm_radio_arduino::steering_tfm tfm_ranges;
 ackermann_msgs::AckermannDrive ackermann_ros_in;
 ackermann_msgs::AckermannDrive ackermann_ros_out;
-
+int pwm_speed = 0;
+int pwm_angle = 0;
 
 void update(
   const float& angle_in, 
   const float& speed_in, 
   const pwm_radio_arduino::steering_tfm& tfm,
-  float& angle_out, 
-  float& speed_out
+  int& angle_out, 
+  int& speed_out
   ) {
     angle_out = transform2(
       angle_in, 
@@ -44,7 +45,7 @@ void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
     update(
       ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
       tfm_ranges, 
-      ackermann_ros_out.steering_angle, ackermann_ros_out.speed
+      pwm_angle, pwm_speed
     );
   }
 }
@@ -53,14 +54,9 @@ void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
 void ros_callback_transform_range(const pwm_radio_arduino::steering_tfm& msg) {
   tfm_ranges = msg;
   tfm_init = true;
-//  
-//  update(
-//    ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
-//    tfm_ranges, 
-//    ackermann_ros_out.steering_angle, ackermann_ros_out.speed
-//  );
+
   update(
-    tfm_ranges.angle_out_zero, tfm_ranges.speed_out_zero, 
+    tfm_ranges.angle_in_zero, tfm_ranges.speed_in_zero, 
     tfm_ranges, 
     pwm_angle_zero, pwm_speed_zero
   );
@@ -87,21 +83,16 @@ bool drive_according_to_input(void *)
     res += 30;
   }
   
-  res += pwm_spin(ackermann_ros_out.steering_angle, ackermann_ros_out.speed);
-  ackermann_ros_out.jerk = res;
-
+  res += pwm_spin(pwm_angle, pwm_speed);
+  ackermann_ros_out.steering_angle_velocity = tfm_init;
+  ackermann_ros_out.steering_angle = pwm_angle;
+  ackermann_ros_out.speed = pwm_speed;
+  ackermann_ros_out.jerk = pwm_speed_zero;
+  ackermann_ros_out.acceleration = tfm_ranges.speed_in_zero;
   publisher_radio.publish(&ackermann_ros_out);
   
   return true;
 }
-
-
-//bool ros_publish_and_spin(void *) {
-//  
-//  
-//  return true;
-//}
-
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
@@ -118,11 +109,6 @@ void setup() {
 
 
 void loop() { 
-  for ( int i =0; i < 30; ++i ) {
-    nh.spinOnce();
-    delay(2);
-  }
+  nh.spinOnce();
   drive_according_to_input(nullptr);
-
-  delay(2);
 }
