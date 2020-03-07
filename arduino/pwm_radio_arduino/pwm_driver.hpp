@@ -1,7 +1,7 @@
 #include <Servo.h>
 
-// pin 9 is connected to the power V+ of pca9685
-// to capture when the controller is enabled to reinitialize it.
+// pin 9 is connected to the power V+ of ESC
+// to capture when it is enabled to reinitialize it.
 constexpr int pin_esc_on = 9;
 
 constexpr int pin_angle = 10;
@@ -26,6 +26,8 @@ bool esc_on() {
 int pwm_spin(const int pwm_angle, const int pwm_speed) {
   if(!esc_on()) {
     esc_init = false;
+    servo_angle.write(pwm_angle_zero);
+    servo_speed.write(pwm_speed_zero);
     return 1;
   }
     

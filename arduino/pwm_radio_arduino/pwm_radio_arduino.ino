@@ -17,12 +17,12 @@ ackermann_msgs::AckermannDrive ackermann_ros_out;
 int pwm_speed = 0;
 int pwm_angle = 0;
 
-void update(
+template<typename T> void update(
   const float& angle_in, 
   const float& speed_in, 
   const pwm_radio_arduino::steering_tfm& tfm,
-  int& angle_out, 
-  int& speed_out
+  T& angle_out, 
+  T& speed_out
   ) {
     angle_out = transform2(
       angle_in, 
@@ -43,7 +43,7 @@ void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
     update(
       ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
       tfm_ranges, 
-      pwm_angle, pwm_speed
+      ackermann_ros_out.steering_angle, ackermann_ros_out.speed
     );
   }
 }
@@ -68,23 +68,17 @@ bool drive_according_to_input(void *)
     return;
   }
 
-
-  digitalWrite(led_status, HIGH * millis() / 256 % 2);
+ 
   if (millis() - last_update_millis > INACTIVITY_TH_MILLIS) {
     ackermann_ros_out.speed = pwm_speed_zero;
-    res += 20;
-    
+    digitalWrite(led_status, HIGH * millis() / 64 % 2);    
   }
   else {
-    res += 30;
+    digitalWrite(led_status, HIGH * millis() / 256 % 2);
   }
   
-  res += pwm_spin(pwm_angle, pwm_speed);
+  pwm_spin(ackermann_ros_out.steering_angle, ackermann_ros_out.speed);
 
-  ackermann_ros_out.steering_angle = pwm_angle;
-  ackermann_ros_out.speed = pwm_speed;
-
-  ackermann_ros_out.steering_angle_velocity = res;
   publisher_radio.publish(&ackermann_ros_out);
   
   return true;
@@ -107,5 +101,8 @@ void setup() {
 
 void loop() { 
   nh.spinOnce();
-  drive_according_to_input(nullptr);
+  if ((millis() * 17) % 7 == 0) { // send updates not too often 
+    drive_according_to_input(nullptr);
+  }
+  delay(5);
 }
