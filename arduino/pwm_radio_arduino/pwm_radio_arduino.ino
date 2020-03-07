@@ -2,14 +2,12 @@
 #include <ros.h>
 #include "ros_lib/ackermann_msgs/AckermannDrive.h"
 #include "ros_lib/pwm_radio_arduino/steering_tfm.h"
-#include "pca9685_driver.hpp"
+#include "pwm_driver.hpp"
 #include "range_transforms.hpp"
 
-constexpr unsigned long INACTIVITY_TH_MICROS = 1000000;
-constexpr int DEFAULT_SPEED_OFF = 0;
-
-
-volatile unsigned long last_update_micros = 0;
+constexpr unsigned long INACTIVITY_TH_MILLIS = 500;
+constexpr int led_status = 12;
+volatile unsigned long last_update_millis = 0;
 ros::NodeHandle nh;
 
 bool tfm_init = false;
@@ -40,7 +38,7 @@ void update(
 
 void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
   ackermann_ros_in = msg;
-  last_update_micros = micros();
+  last_update_millis = millis();
   if (tfm_init) {
     update(
       ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
@@ -54,12 +52,6 @@ void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
 void ros_callback_transform_range(const pwm_radio_arduino::steering_tfm& msg) {
   tfm_ranges = msg;
   tfm_init = true;
-
-  update(
-    tfm_ranges.angle_in_zero, tfm_ranges.speed_in_zero, 
-    tfm_ranges, 
-    pwm_angle_zero, pwm_speed_zero
-  );
 }
 
 
@@ -72,23 +64,27 @@ bool drive_according_to_input(void *)
 {
   int res = 0;
   if (!tfm_init) {
-    ackermann_ros_out.speed = 1400;
-    res += 10;
+    digitalWrite(led_status, HIGH);
+    return;
   }
-  else if (micros() - last_update_micros > INACTIVITY_TH_MICROS) {
-    ackermann_ros_out.speed = 1400;
+
+
+  digitalWrite(led_status, HIGH * millis() / 256 % 2);
+  if (millis() - last_update_millis > INACTIVITY_TH_MILLIS) {
+    ackermann_ros_out.speed = pwm_speed_zero;
     res += 20;
+    
   }
   else {
     res += 30;
   }
   
   res += pwm_spin(pwm_angle, pwm_speed);
-  ackermann_ros_out.steering_angle_velocity = tfm_init;
+
   ackermann_ros_out.steering_angle = pwm_angle;
   ackermann_ros_out.speed = pwm_speed;
-  ackermann_ros_out.jerk = pwm_speed_zero;
-  ackermann_ros_out.acceleration = tfm_ranges.speed_in_zero;
+
+  ackermann_ros_out.steering_angle_velocity = res;
   publisher_radio.publish(&ackermann_ros_out);
   
   return true;
@@ -96,7 +92,8 @@ bool drive_according_to_input(void *)
 
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  pinMode(led_status, OUTPUT);
+  servo_setup();
   
   // init ros
   nh.getHardware()->setBaud(115200);
