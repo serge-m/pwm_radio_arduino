@@ -4,6 +4,7 @@
 #include "ros_lib/pwm_radio_arduino/steering_tfm.h"
 #include "pwm_driver.hpp"
 #include "range_transforms.hpp"
+#include "pwm_listener.hpp"
 
 constexpr unsigned long INACTIVITY_TH_MILLIS = 500;
 constexpr int led_status = 12;
@@ -71,20 +72,24 @@ bool drive_according_to_input(void *)
  
   if (millis() - last_update_millis > INACTIVITY_TH_MILLIS) {
     ackermann_ros_out.speed = pwm_speed_zero;
-    digitalWrite(led_status, HIGH * millis() / 64 % 2);    
+    digitalWrite(led_status, HIGH * millis() / 64 % 2);   // fast blinking if no command from ROS 
   }
   else {
-    digitalWrite(led_status, HIGH * millis() / 256 % 2);
+    digitalWrite(led_status, HIGH * millis() / 256 % 2);  // slow blinking if everythin is ok
   }
   
   pwm_spin(ackermann_ros_out.steering_angle, ackermann_ros_out.speed);
 
+  ackermann_ros_out.steering_angle_velocity = pwm_listener_steering.value();
+  ackermann_ros_out.acceleration = pwm_listener_throttle.value();
   publisher_radio.publish(&ackermann_ros_out);
   
   return true;
 }
 
 void setup() {
+  pwm_listener_setup();
+
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(led_status, OUTPUT);
   servo_setup();
