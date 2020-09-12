@@ -23,6 +23,13 @@ bool esc_on() {
   return digitalRead(pin_esc_on) == HIGH;
 }
 
+void init_zero_level_on_esc() {
+    servo_angle.write(pwm_angle_zero);
+    servo_speed.write(pwm_speed_zero);
+    delay(2000);  // TODO: check if we need this 
+    esc_init = true;
+}    
+
 int pwm_spin(const int pwm_angle, const int pwm_speed) {
   if(!esc_on()) {
     esc_init = false;
@@ -32,10 +39,7 @@ int pwm_spin(const int pwm_angle, const int pwm_speed) {
   }
     
   if (!esc_init) {
-    servo_angle.write(pwm_angle_zero);
-    servo_speed.write(pwm_speed_zero);
-    delay(2000);  // TODO: check if we need this 
-    esc_init = true;
+    init_zero_level_on_esc();
     return 3;
   }
 
@@ -45,4 +49,3 @@ int pwm_spin(const int pwm_angle, const int pwm_speed) {
   return 0;
 }
 
-    
