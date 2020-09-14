@@ -50,8 +50,9 @@ find_package(catkin REQUIRED
 add_message_files(
   DIRECTORY msg
   FILES
-  pwm_steering.msg
-  steering_tfm.msg
+  tripple_range.msg
+  control_range.msg
+  conversion_settings.msg
 )
 
 generate_messages(

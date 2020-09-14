@@ -1,7 +1,7 @@
 #include <PinChangeInterrupt.h>
 
-const int pin_pwm_in_steering = 7;
-const int pin_pwm_in_throttle = 8;
+constexpr int pin_pwm_in_steering = 7;
+constexpr int pin_pwm_in_throttle = 8;
 
 class PwmListener
 {

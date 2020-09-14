@@ -1,7 +1,7 @@
 #include <PinChangeInterrupt.h>
 #include <ros.h>
 #include "ros_lib/ackermann_msgs/AckermannDrive.h"
-#include "ros_lib/pwm_radio_arduino/steering_tfm.h"
+#include "ros_lib/pwm_radio_arduino/conversion_settings.h"
 #include "pwm_driver.hpp"
 #include "range_transforms.hpp"
 #include "pwm_listener.hpp"
@@ -11,60 +11,63 @@ constexpr int led_status = 12;
 volatile unsigned long last_update_millis = 0;
 ros::NodeHandle nh;
 
-bool tfm_init = false;
-pwm_radio_arduino::steering_tfm tfm_ranges;
+bool settings_init = false;
+pwm_radio_arduino::conversion_settings settings;
 ackermann_msgs::AckermannDrive ackermann_ros_in;
 ackermann_msgs::AckermannDrive ackermann_ros_out;
-int pwm_speed = 0;
-int pwm_angle = 0;
 
 template<typename T> void update(
   const float& angle_in, 
   const float& speed_in, 
-  const pwm_radio_arduino::steering_tfm& tfm,
+  const pwm_radio_arduino::control_range& input_range,
+  const pwm_radio_arduino::control_range& output_range,
   T& angle_out, 
   T& speed_out
   ) {
     angle_out = transform2(
       angle_in, 
-      tfm.angle_in_low, tfm.angle_in_zero, tfm.angle_in_high,
-      tfm.angle_out_low, tfm.angle_out_zero, tfm.angle_out_high
+      input_range.angle.low, input_range.angle.zero, input_range.angle.high,
+      output_range.angle.low, output_range.angle.zero, output_range.angle.high
       );
     speed_out = transform2(
       speed_in, 
-      tfm.speed_in_low, tfm.speed_in_zero, tfm.speed_in_high,
-      tfm.speed_out_low, tfm.speed_out_zero, tfm.speed_out_high
+      input_range.speed.low, input_range.speed.zero, input_range.speed.high,
+      output_range.speed.low, output_range.speed.zero, output_range.speed.high
       );
 }
 
 void ros_callback_driver_input(const ackermann_msgs::AckermannDrive& msg) {
   ackermann_ros_in = msg;
   last_update_millis = millis();
-  if (tfm_init) {
+  if (settings_init) {
     update(
       ackermann_ros_in.steering_angle, ackermann_ros_in.speed, 
-      tfm_ranges, 
+      settings.driver_in,
+      settings.out, 
       ackermann_ros_out.steering_angle, ackermann_ros_out.speed
     );
   }
 }
 
 
-void ros_callback_transform_range(const pwm_radio_arduino::steering_tfm& msg) {
-  tfm_ranges = msg;
-  tfm_init = true;
+void ros_callback_settings(const pwm_radio_arduino::conversion_settings& msg) {
+  settings = msg;
+  settings_init = true;
 }
 
 
 ros::Subscriber<ackermann_msgs::AckermannDrive> sub_driver_input("pwm_radio_arduino/driver_ackermann", &ros_callback_driver_input);
-ros::Subscriber<pwm_radio_arduino::steering_tfm> sub_tfm_range("pwm_radio_arduino/steering_tfm", &ros_callback_transform_range);
+// Using ros messages instead of dymparams for the settings because dynparams are not supported. Normal ros params are not dynamic enough
+ros::Subscriber<pwm_radio_arduino::conversion_settings> sub_tfm_range{
+  "pwm_radio_arduino/settings", &ros_callback_settings
+};
 ros::Publisher publisher_radio("pwm_radio_arduino/arduino_ackermann", &ackermann_ros_out);
 
 
 bool drive_according_to_input(void *)
 {
   int res = 0;
-  if (!tfm_init) {
+  if (!settings_init) {
     digitalWrite(led_status, HIGH);
     return;
   }

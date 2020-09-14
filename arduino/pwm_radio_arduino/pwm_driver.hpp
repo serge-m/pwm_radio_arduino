@@ -7,8 +7,8 @@ constexpr int pin_esc_on = 9;
 constexpr int pin_angle = 10;
 constexpr int pin_speed = 11;
 
-const int pwm_angle_zero = 90;
-const int pwm_speed_zero = 90;
+constexpr int pwm_angle_zero = 90;
+constexpr int pwm_speed_zero = 90;
 
 Servo servo_angle;
 Servo servo_speed;
@@ -48,4 +48,3 @@ int pwm_spin(const int pwm_angle, const int pwm_speed) {
 
   return 0;
 }
-
