@@ -39,6 +39,11 @@ bool radio_is_static() {
     );    
 }
 
+int safe_speed(int speed) {
+  // original speed controls are way too fast. I reduce the range here so that the car drives slower.
+  return (speed - pwm_driver::speed_zero_usec) / 2 + pwm_driver::speed_zero_usec;
+}
+
 bool drive_according_to_input(void *)
 {
   if (!radio_is_up_to_date()) {
@@ -46,12 +51,10 @@ bool drive_according_to_input(void *)
     digitalWrite(led_status, HIGH * millis() / 64 % 2);   // fast blinking if no radio is acquired
   } else if (driver_is_up_to_date() && radio_is_static()) {
     control_out = control_driver_in;
-//    control_out.angle_control_usec = millis() - last_update_millis;
-//    control_out.speed_control_usec = pwm_listener::speed_listener.micros_since_last_signal();
     digitalWrite(led_status, HIGH * millis() / 256 % 2);  // medium blinking if driving by driver
   } else {  // drive according to radio
     control_out.angle_control_usec = pwm_listener::angle_listener.value();
-    control_out.speed_control_usec = pwm_listener::speed_listener.value();
+    control_out.speed_control_usec = safe_speed(pwm_listener::speed_listener.value());
     digitalWrite(led_status, HIGH * millis() / 1024 % 2);  // slow blinking if driving by radio
   }
   
