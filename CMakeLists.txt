@@ -50,9 +50,7 @@ find_package(catkin REQUIRED
 add_message_files(
   DIRECTORY msg
   FILES
-  tripple_range.msg
-  control_range.msg
-  conversion_settings.msg
+  control.msg
 )
 
 generate_messages(

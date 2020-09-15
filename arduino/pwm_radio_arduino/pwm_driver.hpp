@@ -1,5 +1,6 @@
 #include <Servo.h>
 
+namespace pwm_driver {
 // pin 9 is connected to the power V+ of ESC
 // to capture when it is enabled to reinitialize it.
 constexpr int pin_esc_on = 9;
@@ -7,8 +8,8 @@ constexpr int pin_esc_on = 9;
 constexpr int pin_angle = 10;
 constexpr int pin_speed = 11;
 
-constexpr int pwm_angle_zero = 90;
-constexpr int pwm_speed_zero = 90;
+constexpr int angle_zero_usec = 1500;
+constexpr int speed_zero_usec = 1500;
 
 Servo servo_angle;
 Servo servo_speed;
@@ -24,17 +25,17 @@ bool esc_on() {
 }
 
 void init_zero_level_on_esc() {
-    servo_angle.write(pwm_angle_zero);
-    servo_speed.write(pwm_speed_zero);
+    servo_angle.writeMicroseconds(angle_zero_usec);
+    servo_speed.writeMicroseconds(speed_zero_usec);
     delay(2000);  // TODO: check if we need this 
     esc_init = true;
 }    
 
-int pwm_spin(const int pwm_angle, const int pwm_speed) {
+int pwm_spin(int angle_usec, int speed_usec) {
   if(!esc_on()) {
     esc_init = false;
-    servo_angle.write(pwm_angle_zero);
-    servo_speed.write(pwm_speed_zero);
+    servo_angle.writeMicroseconds(angle_zero_usec);
+    servo_speed.writeMicroseconds(speed_zero_usec);
     return 1;
   }
     
@@ -43,8 +44,9 @@ int pwm_spin(const int pwm_angle, const int pwm_speed) {
     return 3;
   }
 
-  servo_angle.write(pwm_angle);
-  servo_speed.write(pwm_speed);
+  servo_angle.writeMicroseconds(angle_usec);
+  servo_speed.writeMicroseconds(speed_usec);
 
   return 0;
+}
 }
