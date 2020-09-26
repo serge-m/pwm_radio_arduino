@@ -47,7 +47,8 @@ int safe_speed(int speed) {
 bool drive_according_to_input(void *)
 {
   if (!radio_is_up_to_date()) {
-    control_out.speed_control_usec = pwm_driver::speed_zero_usec; 
+    control_out.speed_control_usec = pwm_driver::speed_zero_usec;
+    control_out.angle_control_usec = pwm_driver::angle_zero_usec;
     digitalWrite(led_status, HIGH * millis() / 64 % 2);   // fast blinking if no radio is acquired
   } else if (driver_is_up_to_date() && radio_is_static()) {
     control_out = control_driver_in;
